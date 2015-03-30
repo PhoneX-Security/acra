@@ -15,23 +15,23 @@
  */
 package org.acra;
 
-import static org.acra.ACRA.LOG_TAG;
+import android.content.Context;
+import android.util.Log;
+
+import org.acra.collector.CrashReportData;
+import org.acra.sender.ReportSender;
+import org.acra.sender.ReportSenderException;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
-import org.acra.collector.CrashReportData;
-import org.acra.sender.ReportSender;
-import org.acra.sender.ReportSenderException;
-
-import android.content.Context;
-import android.util.Log;
+import static org.acra.ACRA.LOG_TAG;
 
 /**
  * Checks and send reports on a separate Thread.
- * 
+ *
  * @author Kevin Gaudin
  */
 final class SendWorker extends Thread {
@@ -44,20 +44,16 @@ final class SendWorker extends Thread {
 
     /**
      * Creates a new {@link SendWorker} to try sending pending reports.
-     * 
-     * @param context
-     *            ApplicationContext in which the reports are being sent.
-     * @param reportSenders
-     *            List of ReportSender to use to send the crash reports.
-     * @param sendOnlySilentReports
-     *            If set to true, will send only reports which have been
-     *            explicitly declared as silent by the application developer.
-     * @param approvePendingReports
-     *            if this endWorker should approve pending reports before
-     *            sending any reports.
+     *
+     * @param context               ApplicationContext in which the reports are being sent.
+     * @param reportSenders         List of ReportSender to use to send the crash reports.
+     * @param sendOnlySilentReports If set to true, will send only reports which have been
+     *                              explicitly declared as silent by the application developer.
+     * @param approvePendingReports if this endWorker should approve pending reports before
+     *                              sending any reports.
      */
     public SendWorker(Context context, List<ReportSender> reportSenders, boolean sendOnlySilentReports,
-            boolean approvePendingReports) {
+                      boolean approvePendingReports) {
         this.context = context;
         this.reportSenders = reportSenders;
         this.sendOnlySilentReports = sendOnlySilentReports;
@@ -87,6 +83,13 @@ final class SendWorker extends Thread {
         final CrashReportFinder reportFinder = new CrashReportFinder(context);
         final String[] reportFileNames = reportFinder.getCrashReportFiles();
 
+        /*
+         * @ duplicate detection
+         * if a report is waiting for approval here, it means its hash is not identical
+         * to some already handled report
+         * it is only necessary to check if unapproved hashes are identical
+         */
+
         for (String reportFileName : reportFileNames) {
             if (!fileNameParser.isApproved(reportFileName)) {
                 final File reportFile = new File(context.getFilesDir(), reportFileName);
@@ -108,13 +111,11 @@ final class SendWorker extends Thread {
 
     /**
      * Send pending reports.
-     * 
-     * @param context
-     *            The application context.
-     * @param sendOnlySilentReports
-     *            Send only reports explicitly declared as SILENT by the
-     *            developer (sent via
-     *            {@link ErrorReporter#handleSilentException(Throwable)}.
+     *
+     * @param context               The application context.
+     * @param sendOnlySilentReports Send only reports explicitly declared as SILENT by the
+     *                              developer (sent via
+     *                              {@link ErrorReporter#handleSilentException(Throwable)}.
      */
     private void checkAndSendReports(Context context, boolean sendOnlySilentReports) {
         Log.d(LOG_TAG, "#checkAndSendReports - start");
@@ -131,7 +132,7 @@ final class SendWorker extends Thread {
 
             if (reportsSentCount >= ACRAConstants.MAX_SEND_REPORTS) {
                 break; // send only a few reports to avoid overloading the
-                       // network
+                // network
             }
 
             Log.i(LOG_TAG, "Sending file " + curFileName);
@@ -139,17 +140,23 @@ final class SendWorker extends Thread {
                 final CrashReportPersister persister = new CrashReportPersister(context);
                 final CrashReportData previousCrashReport = persister.load(curFileName);
                 sendCrashReport(previousCrashReport);
-                deleteFile(context, curFileName);
+                // *********************************************
+                if (ACRA.getConfig().dropDuplicateReports()) {
+                    renameFile(context, curFileName, curFileName + ACRAConstants.HANDLED_SUFFIX);
+                } else {
+                    // *********************************************
+                    deleteFile(context, curFileName);
+                }
             } catch (RuntimeException e) {
                 Log.e(ACRA.LOG_TAG, "Failed to send crash reports for " + curFileName, e);
                 deleteFile(context, curFileName);
                 break; // Something really unexpected happened. Don't try to
-                       // send any more reports now.
+                // send any more reports now.
             } catch (IOException e) {
                 Log.e(ACRA.LOG_TAG, "Failed to load crash report for " + curFileName, e);
                 deleteFile(context, curFileName);
                 break; // Something unexpected happened when reading the crash
-                       // report. Don't try to send any more reports now.
+                // report. Don't try to send any more reports now.
             } catch (ReportSenderException e) {
                 Log.e(ACRA.LOG_TAG, "Failed to send crash report for " + curFileName, e);
                 // An issue occurred while sending this report but we can still try to
@@ -165,11 +172,9 @@ final class SendWorker extends Thread {
      * Sends the report with all configured ReportSenders. If at least one
      * sender completed its job, the report is considered as sent and will not
      * be sent again for failing senders.
-     * 
-     * @param errorContent
-     *            Crash data.
-     * @throws ReportSenderException
-     *             if unable to send the crash report.
+     *
+     * @param errorContent Crash data.
+     * @throws ReportSenderException if unable to send the crash report.
      */
     private void sendCrashReport(CrashReportData errorContent) throws ReportSenderException {
         if (!ACRA.isDebuggable() || ACRA.getConfig().sendReportsInDevMode()) {
@@ -183,7 +188,7 @@ final class SendWorker extends Thread {
                 } catch (ReportSenderException e) {
                     if (!sentAtLeastOnce) {
                         throw e; // Don't log here because we aren't dealing
-                                 // with the Exception here.
+                        // with the Exception here.
                     } else {
                         Log.w(LOG_TAG,
                                 "ReportSender of class "
@@ -199,6 +204,17 @@ final class SendWorker extends Thread {
         final boolean deleted = context.deleteFile(fileName);
         if (!deleted) {
             Log.w(ACRA.LOG_TAG, "Could not delete error report : " + fileName);
+        }
+    }
+
+    private void renameFile(Context context, String originalFileName, String newFileName) {
+        File originalFile = context.getFileStreamPath(originalFileName);
+        File newFile = new File(originalFile.getParent(), newFileName);
+        if (newFile.exists()) {
+            context.deleteFile(newFileName);
+        }
+        if (!originalFile.renameTo(newFile)) {
+            Log.w(ACRA.LOG_TAG, "Could not rename error report : " + originalFileName + " to " + newFileName);
         }
     }
 }

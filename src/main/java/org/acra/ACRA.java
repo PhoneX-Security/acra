@@ -15,10 +15,6 @@
  */
 package org.acra;
 
-import org.acra.annotation.ReportsCrashes;
-import org.acra.log.ACRALog;
-import org.acra.log.AndroidLogDelegate;
-
 import android.app.Application;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
@@ -27,70 +23,66 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.preference.PreferenceManager;
 
+import org.acra.annotation.ReportsCrashes;
+import org.acra.log.ACRALog;
+import org.acra.log.AndroidLogDelegate;
+
+import java.util.Arrays;
+
 /**
  * Use this class to initialize the crash reporting feature using
  * {@link #init(Application)} as soon as possible in your {@link Application}
  * subclass {@link Application#onCreate()} method. Configuration items must have
  * been set by using {@link ReportsCrashes} above the declaration of your
  * {@link Application} subclass.
- * 
+ *
  * @author Kevin Gaudin
- * 
  */
 public class ACRA {
 
     public static final boolean DEV_LOGGING = false; // Should be false for
-                                                     // release.
+    // release.
     public static final String LOG_TAG = ACRA.class.getSimpleName();
-    
-    public static ACRALog log = new AndroidLogDelegate();
-
     /**
      * The key of the application default SharedPreference where you can put a
      * 'true' Boolean value to disable ACRA.
      */
     public static final String PREF_DISABLE_ACRA = "acra.disable";
-
     /**
      * Alternatively, you can use this key if you prefer your users to have the
      * checkbox ticked to enable crash reports. If both acra.disable and
      * acra.enable are set, the value of acra.disable takes over the other.
      */
     public static final String PREF_ENABLE_ACRA = "acra.enable";
-
     /**
      * The key of the SharedPreference allowing the user to disable sending
      * content of logcat/dropbox. System logs collection is also dependent of
      * the READ_LOGS permission.
      */
     public static final String PREF_ENABLE_SYSTEM_LOGS = "acra.syslog.enable";
-
     /**
      * The key of the SharedPreference allowing the user to disable sending his
      * device id. Device ID collection is also dependent of the READ_PHONE_STATE
      * permission.
      */
     public static final String PREF_ENABLE_DEVICE_ID = "acra.deviceid.enable";
-
     /**
      * The key of the SharedPreference allowing the user to always include his
      * email address.
      */
     public static final String PREF_USER_EMAIL_ADDRESS = "acra.user.email";
-
     /**
      * The key of the SharedPreference allowing the user to automatically accept
      * sending reports.
      */
     public static final String PREF_ALWAYS_ACCEPT = "acra.alwaysaccept";
-
     /**
      * The version number of the application the last time ACRA was started.
      * This is used to determine whether unsent reports should be discarded
      * because they are old and out of date.
      */
     public static final String PREF_LAST_VERSION_NR = "acra.lastVersionNr";
-
+    public static ACRALog log = new AndroidLogDelegate();
     private static Application mApplication;
 
     // Accessible via ACRA#getErrorReporter().
@@ -99,6 +91,7 @@ public class ACRA {
     // NB don't convert to a local field because then it could be garbage
     // collected and then we would have no PreferenceListener.
     private static OnSharedPreferenceChangeListener mPrefListener;
+    private static ACRAConfiguration configProxy;
 
     /**
      * <p>
@@ -106,8 +99,8 @@ public class ACRA {
      * be placed as soon as possible in the {@link Application#onCreate()}
      * method.
      * </p>
-     * 
-     * @param app   Your Application class.
+     *
+     * @param app Your Application class.
      * @throws IllegalStateException if it is called more than once.
      */
     public static void init(Application app) {
@@ -127,8 +120,8 @@ public class ACRA {
      * method.
      * </p>
      *
-     * @param app       Your Application class.
-     * @param config    ACRAConfiguration to manually set up ACRA configuration.
+     * @param app    Your Application class.
+     * @param config ACRAConfiguration to manually set up ACRA configuration.
      * @throws IllegalStateException if it is called more than once.
      */
     public static void init(Application app, ACRAConfiguration config) {
@@ -142,23 +135,23 @@ public class ACRA {
      * method.
      * </p>
      *
-     * @param app       Your Application class.
-     * @param config    ACRAConfiguration to manually set up ACRA configuration.
-     * @param checkReportsOnApplicationStart    Whether to invoke
-     *     ErrorReporter.checkReportsOnApplicationStart(). Apps which adjust the
-     *     ReportSenders should set this to false and call
-     *     checkReportsOnApplicationStart() themselves to prevent a potential
-     *     race with the SendWorker and list of ReportSenders.
+     * @param app                            Your Application class.
+     * @param config                         ACRAConfiguration to manually set up ACRA configuration.
+     * @param checkReportsOnApplicationStart Whether to invoke
+     *                                       ErrorReporter.checkReportsOnApplicationStart(). Apps which adjust the
+     *                                       ReportSenders should set this to false and call
+     *                                       checkReportsOnApplicationStart() themselves to prevent a potential
+     *                                       race with the SendWorker and list of ReportSenders.
      * @throws IllegalStateException if it is called more than once.
      */
-    public static void init(Application app, ACRAConfiguration config, boolean checkReportsOnApplicationStart){
+    public static void init(Application app, ACRAConfiguration config, boolean checkReportsOnApplicationStart) {
 
         if (mApplication != null) {
             log.w(LOG_TAG, "ACRA#init called more than once. Won't do anything more.");
             return;
         }
         mApplication = app;
-        
+
         if (config == null) {
             log.e(LOG_TAG, "ACRA#init called but no ACRAConfiguration provided");
             return;
@@ -212,9 +205,8 @@ public class ACRA {
 
     /**
      * @return the current instance of ErrorReporter.
-     * @throws IllegalStateException
-     *             if {@link ACRA#init(android.app.Application)} has not yet
-     *             been called.
+     * @throws IllegalStateException if {@link ACRA#init(android.app.Application)} has not yet
+     *                               been called.
      */
     public static ErrorReporter getErrorReporter() {
         if (errorReporterSingleton == null) {
@@ -223,16 +215,13 @@ public class ACRA {
         return errorReporterSingleton;
     }
 
-    
-
     /**
      * Check if the application default shared preferences contains true for the
      * key "acra.disable", do not activate ACRA. Also checks the alternative
      * opposite setting "acra.enable" if "acra.disable" is not found.
-     * 
-     * @param prefs
-     *            SharedPreferences to check to see whether ACRA should be
-     *            disabled.
+     *
+     * @param prefs SharedPreferences to check to see whether ACRA should be
+     *              disabled.
      * @return true if prefs indicate that ACRA should be disabled.
      */
     private static boolean shouldDisableACRA(SharedPreferences prefs) {
@@ -248,36 +237,41 @@ public class ACRA {
 
     /**
      * Checks that mandatory configuration items have been provided.
-     * 
-     * @throws ACRAConfigurationException
-     *             if required values are missing.
+     *
+     * @throws ACRAConfigurationException if required values are missing.
      */
     static void checkCrashResources(ReportsCrashes conf) throws ACRAConfigurationException {
         switch (conf.mode()) {
-        case TOAST:
-            if (conf.resToastText() == 0) {
-                throw new ACRAConfigurationException(
-                        "TOAST mode: you have to define the resToastText parameter in your application @ReportsCrashes() annotation.");
-            }
-            break;
-        case NOTIFICATION:
-            if (conf.resNotifTickerText() == 0 || conf.resNotifTitle() == 0 || conf.resNotifText() == 0) {
-                throw new ACRAConfigurationException(
-                        "NOTIFICATION mode: you have to define at least the resNotifTickerText, resNotifTitle, resNotifText parameters in your application @ReportsCrashes() annotation.");
-            }
-            if (CrashReportDialog.class.equals(conf.reportDialogClass()) && conf.resDialogText() == 0) {
-                throw new ACRAConfigurationException(
-                        "NOTIFICATION mode: using the (default) CrashReportDialog requires you have to define the resDialogText parameter in your application @ReportsCrashes() annotation.");
-            }
-            break;
-        case DIALOG:
-            if (CrashReportDialog.class.equals(conf.reportDialogClass()) && conf.resDialogText() == 0) {
-                throw new ACRAConfigurationException(
-                        "DIALOG mode: using the (default) CrashReportDialog requires you to define the resDialogText parameter in your application @ReportsCrashes() annotation.");
-            }
-            break;
-		default:
-			break;
+            case TOAST:
+                if (conf.resToastText() == 0) {
+                    throw new ACRAConfigurationException(
+                            "TOAST mode: you have to define the resToastText parameter in your application @ReportsCrashes() annotation.");
+                }
+                break;
+            case NOTIFICATION:
+                if (conf.resNotifTickerText() == 0 || conf.resNotifTitle() == 0 || conf.resNotifText() == 0) {
+                    throw new ACRAConfigurationException(
+                            "NOTIFICATION mode: you have to define at least the resNotifTickerText, resNotifTitle, resNotifText parameters in your application @ReportsCrashes() annotation.");
+                }
+                if (CrashReportDialog.class.equals(conf.reportDialogClass()) && conf.resDialogText() == 0) {
+                    throw new ACRAConfigurationException(
+                            "NOTIFICATION mode: using the (default) CrashReportDialog requires you have to define the resDialogText parameter in your application @ReportsCrashes() annotation.");
+                }
+                break;
+            case DIALOG:
+                if (CrashReportDialog.class.equals(conf.reportDialogClass()) && conf.resDialogText() == 0) {
+                    throw new ACRAConfigurationException(
+                            "DIALOG mode: using the (default) CrashReportDialog requires you to define the resDialogText parameter in your application @ReportsCrashes() annotation.");
+                }
+                break;
+            default:
+                break;
+        }
+
+        if (conf.dropDuplicateReports() && !Arrays.asList(conf.customReportContent()).contains(ReportField.STACK_TRACE_HASH)) {
+            throw new ACRAConfigurationException(
+                    "Duplicate report dropping depends on stack trace hash. Enable ReportField.STACK_TRACE_HASH in customReportContent in your @ReportsCrashes() annotation.");
+
         }
     }
 
@@ -286,9 +280,9 @@ public class ACRA {
      * settings for ACRA are stored. Default are the Application default
      * SharedPreferences, but you can provide another SharedPreferences name
      * with {@link ReportsCrashes#sharedPreferencesName()}.
-     * 
+     *
      * @return The Shared Preferences where ACRA will retrieve its user
-     *         adjustable setting.
+     * adjustable setting.
      */
     public static SharedPreferences getACRASharedPreferences() {
         ReportsCrashes conf = getConfig();
@@ -301,7 +295,7 @@ public class ACRA {
 
     /**
      * Provides the current ACRA configuration.
-     * 
+     *
      * @return Current ACRA {@link ReportsCrashes} configuration instance.
      */
     public static ACRAConfiguration getConfig() {
@@ -317,32 +311,29 @@ public class ACRA {
 
     /**
      * Sets the whole ACRA configuration.
-     * 
-     * @param conf
-     *            ACRAConfiguration to use as a proxy for config info.
+     *
+     * @param conf ACRAConfiguration to use as a proxy for config info.
      */
     public static void setConfig(ACRAConfiguration conf) {
         configProxy = conf;
     }
 
     /**
-     * @param app       Your Application class.
+     * @param app Your Application class.
      * @return new {@link ACRAConfiguration} instance with values initialized
-     *         from the {@link ReportsCrashes} annotation.
+     * from the {@link ReportsCrashes} annotation.
      */
     public static ACRAConfiguration getNewDefaultConfig(Application app) {
-        if(app != null) {
+        if (app != null) {
             return new ACRAConfiguration(app.getClass().getAnnotation(ReportsCrashes.class));
         } else {
             return new ACRAConfiguration(null);
         }
     }
 
-    private static ACRAConfiguration configProxy;
-
     /**
      * Returns true if the application is debuggable.
-     * 
+     *
      * @return true if the application is debuggable.
      */
     static boolean isDebuggable() {
@@ -353,11 +344,11 @@ public class ACRA {
             return false;
         }
     }
-    
+
     static Application getApplication() {
         return mApplication;
     }
-    
+
     public static void setLog(ACRALog log) {
         ACRA.log = log;
     }

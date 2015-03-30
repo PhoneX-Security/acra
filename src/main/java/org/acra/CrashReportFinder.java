@@ -15,17 +15,18 @@
  */
 package org.acra;
 
-import static org.acra.ACRA.LOG_TAG;
+import android.content.Context;
+import android.util.Log;
 
 import java.io.File;
 import java.io.FilenameFilter;
 
-import android.content.Context;
-import android.util.Log;
+import static org.acra.ACRA.LOG_TAG;
 
 /**
  * Responsible for retrieving the location of Crash Report files.
  * <p/>
+ *
  * @author William Ferguson
  * @since 4.3.0
  */
@@ -43,6 +44,16 @@ final class CrashReportFinder {
      * @return an array containing the names of pending crash report files.
      */
     public String[] getCrashReportFiles() {
+        return getCrashReportFiles(false);
+    }
+
+    /**
+     * Returns an array containing the names of pending crash report files.
+     *
+     * @param all true for all reports, false for only unhandled
+     * @return an array containing the names of pending crash report files.
+     */
+    public String[] getCrashReportFiles(final boolean all) {
         if (context == null) {
             Log.e(LOG_TAG, "Trying to get ACRA reports but ACRA is not initialized.");
             return new String[0];
@@ -59,7 +70,11 @@ final class CrashReportFinder {
         // Filter for ".stacktrace" files
         final FilenameFilter filter = new FilenameFilter() {
             public boolean accept(File dir, String name) {
-                return name.endsWith(ACRAConstants.REPORTFILE_EXTENSION);
+                if (all) {
+                    return name.contains(ACRAConstants.REPORTFILE_EXTENSION);
+                } else {
+                    return name.endsWith(ACRAConstants.REPORTFILE_EXTENSION);
+                }
             }
         };
         final String[] result = dir.list(filter);
